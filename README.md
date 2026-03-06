@@ -2,7 +2,7 @@
 
 Data analysis and reporting tools for [Mathraining](https://www.mathraining.be/), the interactive training site for the **International Mathematical Olympiad** (IMO) in French. This repo scrapes country-level user lists and resolution history from Mathraining, then builds yearly analytics and gender-breakdown reports with visualizations.
 
-**[Open the self-contained Colab notebook](https://colab.research.google.com/drive/1twcJVzNbkOCum3YyH1y_PImMLpRYaotD#scrollTo=HPS2yD0fLSB-)** — clone repo, install deps, and run the full pipeline in the cloud (no local setup).
+**[Google Colab Notebook](https://colab.research.google.com/drive/1twcJVzNbkOCum3YyH1y_PImMLpRYaotD#scrollTo=HPS2yD0fLSB-)** : clone repo, install deps, and run the full pipeline in the cloud (no local setup).
 
 ## About Mathraining
 
