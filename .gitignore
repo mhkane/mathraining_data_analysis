@@ -18,6 +18,9 @@ ENV/
 # Jupyter
 .ipynb_checkpoints/
 
+# Colab notebook (link added later)
+Mathraining_Country_Report_Colab.ipynb
+
 # IDE
 .idea/
 .vscode/

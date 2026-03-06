@@ -692,7 +692,7 @@ def plot_cumulative_single_bar(
 ):
     """
     Bar chart for one cumulative metric with value labels on top of each bar.
-    Layout matches reference: blue bars, Year on X-axis, value labels in blue above bars.
+    Uses teal (OVERALL_PLOT_COLOR) to distinguish from gender plots. Year on X-axis, value labels above bars.
     Excludes years > max_year (default PLOT_MAX_YEAR, e.g. 2026). Shows every year on x-axis.
     """
     import matplotlib.pyplot as plt
@@ -708,7 +708,7 @@ def plot_cumulative_single_bar(
     ax = ax or plt.gca()
     title = title or CUMULATIVE_BAR_CONFIG.get(metric_col, (metric_col, ""))[0]
     ylabel = ylabel or CUMULATIVE_BAR_CONFIG.get(metric_col, ("", metric_col))[1] or metric_col
-    bars = ax.bar(df["year"], df[metric_col], color="steelblue", edgecolor="navy", alpha=0.85)
+    bars = ax.bar(df["year"], df[metric_col], color=OVERALL_PLOT_COLOR, edgecolor=OVERALL_PLOT_EDGE, alpha=0.85)
     ax.set_xlabel("Year")
     ax.set_ylabel(ylabel)
     ax.set_title(title)
@@ -723,7 +723,7 @@ def plot_cumulative_single_bar(
             ha="center",
             va="bottom",
             fontsize=9,
-            color="steelblue",
+            color=OVERALL_PLOT_COLOR,
             fontweight="bold",
         )
 
@@ -790,7 +790,7 @@ def plot_per_year_single(
         return
     ax = ax or plt.gca()
     title = PER_YEAR_METRICS.get(metric, metric)
-    bars = ax.bar(df["year"], df[metric], color="steelblue", edgecolor="navy", alpha=0.85)
+    bars = ax.bar(df["year"], df[metric], color=OVERALL_PLOT_COLOR, edgecolor=OVERALL_PLOT_EDGE, alpha=0.85)
     ax.set_xlabel("Year")
     ax.set_ylabel(metric)
     ax.set_title(title)
@@ -805,7 +805,7 @@ def plot_per_year_single(
             ha="center",
             va="bottom",
             fontsize=9,
-            color="steelblue",
+            color=OVERALL_PLOT_COLOR,
             fontweight="bold",
         )
 
@@ -817,6 +817,13 @@ CUM_GENDER_METRICS = {
     "cumulative_exercises_eoy": "Cumulative exercises (end of year)",
     "cumulative_problems_eoy": "Cumulative problems (end of year)",
 }
+
+# Colors for non-gendered (overall) bar charts: teal to distinguish from gender (male=steelblue, female=pink)
+OVERALL_PLOT_COLOR = "#0D9488"   # teal-600
+OVERALL_PLOT_EDGE = "#115E59"    # teal-800
+
+# Colors for gender in plots: male=steelblue, female=pink
+GENDER_COLORS = {"male": "steelblue", "female": "pink", "unknown": "gray"}
 
 
 def plot_cumulative_by_gender_bar(
@@ -847,7 +854,8 @@ def plot_cumulative_by_gender_bar(
         sub = df[df["gender"] == g].set_index("year").reindex(years, fill_value=0)
         vals = sub["value"].tolist()
         off = (i - len(genders) / 2 + 0.5) * w
-        bars = ax.bar(x + off, vals, width=w, label=g)
+        color = GENDER_COLORS.get(g, "gray")
+        bars = ax.bar(x + off, vals, width=w, label=g, color=color)
         for bar, val in zip(bars, vals):
             if val > 0:
                 ax.text(
@@ -866,6 +874,74 @@ def plot_cumulative_by_gender_bar(
     ax.set_title(CUM_GENDER_METRICS.get(metric, metric) + " by gender")
     ax.legend()
     ax.grid(True, alpha=0.3, axis="y")
+
+
+def plot_gender_pies_2025(
+    yearly_by_gender_df: pd.DataFrame,
+    year: int = 2025,
+    metrics: list[str] | None = None,
+    figsize: tuple[int, int] = (10, 10),
+):
+    """
+    Plot 4 pie charts for the given year: % male vs female for accounts, points, exercises, problems.
+    Uses GENDER_COLORS: male=blue, female=pink. Returns a single figure with 2x2 subplots.
+    """
+    import matplotlib.pyplot as plt
+    if yearly_by_gender_df.empty:
+        fig, axes = plt.subplots(2, 2, figsize=figsize)
+        for ax in axes.flat:
+            ax.text(0.5, 0.5, "No data", ha="center", va="center")
+        fig.suptitle(f"Gender breakdown ({year})", fontsize=12, y=1.02)
+        return fig
+    if metrics is None:
+        metrics = [
+            "cumulative_accounts_eoy",
+            "cumulative_points_eoy",
+            "cumulative_exercises_eoy",
+            "cumulative_problems_eoy",
+        ]
+    df = yearly_by_gender_df[
+        (yearly_by_gender_df["year"] == year) & (yearly_by_gender_df["gender"].isin(["male", "female"]))
+    ]
+    if df.empty:
+        fig, axes = plt.subplots(2, 2, figsize=figsize)
+        for ax in axes.flat:
+            ax.text(0.5, 0.5, "No data", ha="center", va="center")
+        fig.suptitle(f"Gender breakdown ({year})", fontsize=12, y=1.02)
+        return fig
+    fig, axes = plt.subplots(2, 2, figsize=figsize)
+    axes = axes.flatten()
+    for idx, metric in enumerate(metrics):
+        ax = axes[idx]
+        sub = df[df["metric"] == metric]
+        if sub.empty:
+            ax.text(0.5, 0.5, "No data", ha="center", va="center")
+            ax.set_title(CUM_GENDER_METRICS.get(metric, metric))
+            continue
+        # Order: male first, then female (for consistent blue then pink)
+        sub = sub.set_index("gender").reindex(["male", "female"]).fillna(0).reset_index()
+        sub = sub[sub["value"] > 0]
+        if sub.empty:
+            ax.text(0.5, 0.5, "No data", ha="center", va="center")
+            ax.set_title(CUM_GENDER_METRICS.get(metric, metric))
+            continue
+        labels = sub["gender"].str.capitalize()
+        sizes = sub["value"].astype(int)
+        colors = [GENDER_COLORS.get(g, "gray") for g in sub["gender"]]
+        total = sizes.sum()
+        if total == 0:
+            ax.text(0.5, 0.5, "No data", ha="center", va="center")
+        else:
+            wedges, texts, autotexts = ax.pie(
+                sizes, labels=labels, colors=colors, autopct="%1.1f%%", startangle=90
+            )
+            for t in autotexts:
+                t.set_fontsize(14)
+                t.set_fontweight("bold")
+        ax.set_title(CUM_GENDER_METRICS.get(metric, metric))
+    fig.suptitle(f"Gender breakdown ({year}) – male vs female %", fontsize=12, y=1.02)
+    fig.tight_layout()
+    return fig
 
 
 def plot_top2_active_by_gender(
@@ -909,9 +985,10 @@ def plot_top2_active_by_gender(
         pivot = pivot[cols]
         x = np.arange(len(years))
         w = 0.35
+        bar_color = GENDER_COLORS.get(gender, "gray")
         for i, rank in enumerate(cols):
             off = (i - 0.5) * w
-            ax.bar(x + off, pivot[rank].values, width=w, label=f"Rank {rank}")
+            ax.bar(x + off, pivot[rank].values, width=w, label=f"Rank {rank}", color=bar_color, alpha=0.7 + 0.15 * (2 - i))
         ax.set_xticks(x)
         ax.set_xticklabels(years, rotation=45, ha="right")
         ax.set_ylabel("Points gained")
@@ -1097,7 +1174,8 @@ def build_report_from_data(data: dict):
     Build all report figures and extra tables from loaded report data (no scraping).
     Use after load_report_data(). Returns a report dict with same data plus:
     - fig_per_year_signups, fig_per_year_points, fig_per_year_exercises, fig_per_year_problems
-    - fig_cumulative_gender_signups, fig_cumulative_gender_points, fig_cumulative_gender_exercises, fig_cumulative_gender_problems (bar)
+    - fig_cumulative_gender_signups, fig_cumulative_gender_points, fig_cumulative_gender_exercises, fig_cumulative_gender_problems (bar; male=blue, female=pink)
+    - fig_pies_2025_gender (4 pies: accounts, points, exercises, problems for 2025)
     - fig_top2_active_by_gender
     - most_active_top3_df, most_active_top2_by_gender_df
     """
@@ -1155,6 +1233,9 @@ def build_report_from_data(data: dict):
         plot_cumulative_by_gender_bar(yearly_metrics_by_gender_df, metric, first_year=first_year, max_year=max_year, ax=ax)
         fig.tight_layout()
         out[key] = fig
+
+    # 2025 gender pie charts: % male vs female (accounts, points, exercises, problems)
+    out["fig_pies_2025_gender"] = plot_gender_pies_2025(yearly_metrics_by_gender_df, year=2025)
 
     # Top 2 most active per gender (plot uses detail table with points/rank)
     out["fig_top2_active_by_gender"] = plot_top2_active_by_gender(
