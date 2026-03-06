@@ -6,8 +6,8 @@ Generated CSVs and figures from the Mathraining country yearly analytics pipelin
 
 **Location:** `March_6_2026_Report/`
 
-- **4 CSVs:** `yearly_metrics_df.csv`, `yearly_metrics_by_gender_df.csv`, `most_active_top3_df.csv`, `most_active_top2_by_gender_df.csv`
-- **14 PNGs:** cumulative and per-year bar charts (overall + by gender), 2025 gender pie charts, top-2-by-gender figure
+- **`csvs/`** — 6 CSVs: `yearly_metrics_df.csv`, `yearly_metrics_by_gender_df.csv`, `most_active_top3_df.csv`, `most_active_top2_by_gender_df.csv`, `profiles_df.csv`, `events_df.csv`
+- **`figures/`** — 14 PNGs: cumulative and per-year bar charts (overall + by gender), 2025 gender pie charts, top-2-by-gender figure
 
 Plot titles use Ivorian Mathraining wording. To regenerate from the saved pickle:
 

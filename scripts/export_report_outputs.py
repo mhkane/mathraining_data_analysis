@@ -9,12 +9,16 @@ import sys
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_DIR = os.path.join(REPO_ROOT, "report", "March_6_2026_Report")
+OUT_CSV_DIR = os.path.join(OUT_DIR, "csvs")
+OUT_FIG_DIR = os.path.join(OUT_DIR, "figures")
 
 CSV_KEYS = [
     "yearly_metrics_df",
     "yearly_metrics_by_gender_df",
     "most_active_top3_df",
     "most_active_top2_by_gender_df",
+    "profiles_df",
+    "events_df",
 ]
 
 PNG_KEYS = [
@@ -57,23 +61,24 @@ def main():
             data = pickle.load(f)
         report_loaded = msu.build_report_from_data(data)
 
-    os.makedirs(OUT_DIR, exist_ok=True)
+    os.makedirs(OUT_CSV_DIR, exist_ok=True)
+    os.makedirs(OUT_FIG_DIR, exist_ok=True)
 
     for key in CSV_KEYS:
         df = report_loaded.get(key)
         if df is not None and hasattr(df, "to_csv"):
-            path = os.path.join(OUT_DIR, f"{key}.csv")
+            path = os.path.join(OUT_CSV_DIR, f"{key}.csv")
             df.to_csv(path, index=False)
             print(f"Wrote {path}")
 
     for key in PNG_KEYS:
         fig = report_loaded.get(key)
         if fig is not None and hasattr(fig, "savefig"):
-            path = os.path.join(OUT_DIR, f"{key}.png")
+            path = os.path.join(OUT_FIG_DIR, f"{key}.png")
             fig.savefig(path, dpi=150, bbox_inches="tight")
             print(f"Wrote {path}")
 
-    print(f"Done. Outputs in {OUT_DIR}")
+    print(f"Done. CSVs in {OUT_CSV_DIR}, figures in {OUT_FIG_DIR}")
 
 
 if __name__ == "__main__":
