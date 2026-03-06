@@ -1,14 +1,14 @@
 # Mathraining country data analysis
 
-Data analysis and reporting tools for [Mathraining](https://www.mathraining.be/) — the interactive training site for the **International Mathematical Olympiad** (IMO). This repo scrapes country-level user lists and resolution history from Mathraining, then builds yearly analytics and gender-breakdown reports with visualizations.
+Data analysis and reporting tools for [Mathraining](https://www.mathraining.be/), the interactive training site for the **International Mathematical Olympiad** (IMO) in French. This repo scrapes country-level user lists and resolution history from Mathraining, then builds yearly analytics and gender-breakdown reports with visualizations.
 
 ## About Mathraining
 
 [Mathraining](https://www.mathraining.be/) is a French-language platform for training in olympiad-style mathematics. Launched in December 2014, it offers:
 
-- **Theory** — foundations, combinatorics, geometry, number theory, algebra, functional equations, inequalities  
-- **Problems** — by topic, virtual tests, and contests  
-- **Statistics** — scores, recent resolutions, difficulty by chapter  
+- **Theory** : foundations, combinatorics, geometry, number theory, algebra, functional equations, inequalities  
+- **Problems** L by topic, virtual tests, and contests  
+- **Statistics** L scores, recent resolutions, difficulty by chapter  
 
 As of 2024 the site reports **~24,000 ranked users**, **~132,000 problems solved**, and **~1.3 million exercises solved**. Users come mainly from Belgium and France, plus many francophone countries (e.g. Morocco, Tunisia, Côte d'Ivoire, Algeria, Luxembourg). The goal is to prepare secondary-school students for international olympiads while welcoming anyone interested in olympiad mathematics.
 
