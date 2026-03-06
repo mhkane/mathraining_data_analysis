@@ -663,8 +663,8 @@ def plot_cumulative(
 # Cumulative single-metric bar chart: (title, ylabel) for layout like reference images
 CUMULATIVE_BAR_CONFIG = {
     "cumulative_accounts_eoy": (
-        "Total Mathraining Accounts At End of Each Year",
-        "Mathraining Accounts",
+        "Total Ivorian Mathraining Accounts At End of Each Year",
+        "Ivorian Mathraining Accounts",
     ),
     "cumulative_points_eoy": (
         "Cumulative number of student points vs. Year",
@@ -763,7 +763,7 @@ def plot_per_year(
 
 # Per-year metric column -> display label
 PER_YEAR_METRICS = {
-    "signups_per_year": "Signups per year",
+    "signups_per_year": "Signups per year (Ivorian Account)",
     "points_gained_per_year": "Points gained per year",
     "exercises_completed_per_year": "Exercises completed per year",
     "problems_solved_per_year": "Problems solved per year",
