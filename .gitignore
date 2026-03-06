@@ -1,0 +1,25 @@
+# Pickle data files
+*.pkl
+
+# Generated images
+*.png
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.so
+.env
+.venv
+venv/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
