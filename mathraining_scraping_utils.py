@@ -105,6 +105,67 @@ def _normalize_int_cell(value: str | None) -> int:
     return int(s) if s else 0
 
 
+def _signup_year(s: str):
+    """Parse signup year from MM/DD/YYYY string. Returns None if invalid."""
+    if pd.isna(s) or not s:
+        return None
+    try:
+        parts = str(s).split("/")
+        if len(parts) == 3:
+            return int(parts[2])
+    except Exception:
+        pass
+    return None
+
+
+def _filter_years(
+    df: pd.DataFrame,
+    first_year: int | None,
+    max_year: int | None,
+    year_col: str = "year",
+) -> pd.DataFrame:
+    """Filter DataFrame by year range; max_year defaults to PLOT_MAX_YEAR."""
+    df = df.copy()
+    if first_year is not None:
+        df = df[df[year_col] >= first_year]
+    max_y = max_year if max_year is not None else PLOT_MAX_YEAR
+    return df[df[year_col] <= max_y]
+
+
+def _add_bar_value_labels(
+    ax,
+    bars,
+    values,
+    *,
+    color=None,
+    fontsize=9,
+    fontweight="bold",
+    min_val=0,
+):
+    """Add value labels on top of bars. Skips values <= min_val."""
+    for bar, val in zip(bars, values):
+        if val <= min_val:
+            continue
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height(),
+            str(int(val)),
+            ha="center",
+            va="bottom",
+            fontsize=fontsize,
+            color=color or "black",
+            fontweight=fontweight,
+        )
+
+
+def _empty_fig(figsize=(8, 4), message: str = "No data"):
+    """Return a figure with a centered message (e.g. when no data)."""
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.text(0.5, 0.5, message, ha="center", va="center", transform=ax.transAxes)
+    return fig
+
+
 def get_country_user_count_and_pages(
     country_id: int,
     session: requests.Session | None = None,
@@ -357,22 +418,7 @@ def build_yearly_metrics(
         return pd.DataFrame()
     logger.info("Building yearly metrics ...")
     profiles_df = profiles_df.copy()
-
-    # Signup year from Sign Up Date
-    def signup_year(s: str):
-        if pd.isna(s) or not s:
-            return None
-        try:
-            # MM/DD/YYYY
-            parts = str(s).split("/")
-            if len(parts) == 3:
-                return int(parts[2])
-        except Exception:
-            pass
-        return None
-
-    profiles_df = profiles_df.copy()
-    profiles_df["signup_year"] = profiles_df["Sign Up Date"].map(signup_year)
+    profiles_df["signup_year"] = profiles_df["Sign Up Date"].map(_signup_year)
     signups = profiles_df["signup_year"].dropna().astype(int)
     if len(signups) == 0:
         year_range = list(range(datetime.now().year, datetime.now().year + 1))
@@ -428,20 +474,8 @@ def build_yearly_metrics_by_gender(
     if profiles_df.empty:
         return pd.DataFrame()
     logger.info("Building yearly metrics by gender ...")
-
-    def signup_year(s):
-        if pd.isna(s) or not s:
-            return None
-        try:
-            parts = str(s).split("/")
-            if len(parts) == 3:
-                return int(parts[2])
-        except Exception:
-            pass
-        return None
-
     prof = profiles_df.copy()
-    prof["signup_year"] = prof["Sign Up Date"].map(signup_year)
+    prof["signup_year"] = prof["Sign Up Date"].map(_signup_year)
     prof = prof.dropna(subset=["signup_year"])
     prof["signup_year"] = prof["signup_year"].astype(int)
 
@@ -460,8 +494,6 @@ def build_yearly_metrics_by_gender(
             cum_acc = (prof_g["signup_year"] <= year).sum()
             rows.append({"year": year, "gender": gender, "metric": "cumulative_accounts_eoy", "value": cum_acc})
 
-    df_per = pd.DataFrame(rows)
-
     if not events_df.empty and "Link" in events_df.columns:
         ev = events_df.merge(prof[["Link", "gender_inferred"]], on="Link", how="left")
         ev["gender_inferred"] = ev["gender_inferred"].fillna("unknown")
@@ -470,11 +502,13 @@ def build_yearly_metrics_by_gender(
             for gender in genders:
                 ev_g = ev_y[ev_y["gender_inferred"] == gender]
                 pts = ev_g["points"].sum()
-                df_per = pd.concat([df_per, pd.DataFrame([{"year": year, "gender": gender, "metric": "points_gained_per_year", "value": int(pts)}])], ignore_index=True)
+                rows.append({"year": year, "gender": gender, "metric": "points_gained_per_year", "value": int(pts)})
                 ex = (ev_g["event_type"] == "exercise").sum()
-                df_per = pd.concat([df_per, pd.DataFrame([{"year": year, "gender": gender, "metric": "exercises_completed_per_year", "value": int(ex)}])], ignore_index=True)
+                rows.append({"year": year, "gender": gender, "metric": "exercises_completed_per_year", "value": int(ex)})
                 prob = (ev_g["event_type"] == "problem").sum()
-                df_per = pd.concat([df_per, pd.DataFrame([{"year": year, "gender": gender, "metric": "problems_solved_per_year", "value": int(prob)}])], ignore_index=True)
+                rows.append({"year": year, "gender": gender, "metric": "problems_solved_per_year", "value": int(prob)})
+
+    df_per = pd.DataFrame(rows)
 
     # Add cumulative points/exercises/problems by gender (cumsum of per-year)
     cum_rows = []
@@ -639,11 +673,7 @@ def plot_cumulative(
     import matplotlib.pyplot as plt
     if yearly_df.empty:
         return
-    df = yearly_df.copy()
-    if first_year is not None:
-        df = df[df["year"] >= first_year]
-    max_y = max_year if max_year is not None else PLOT_MAX_YEAR
-    df = df[df["year"] <= max_y]
+    df = _filter_years(yearly_df, first_year, max_year)
     if df.empty:
         return
     ax = ax or plt.gca()
@@ -681,6 +711,34 @@ CUMULATIVE_BAR_CONFIG = {
 }
 
 
+def _plot_single_metric_bar(
+    yearly_df: pd.DataFrame,
+    metric_col: str,
+    title: str | None,
+    ylabel: str | None,
+    first_year: int | None,
+    max_year: int | None,
+    ax,
+):
+    """Shared bar chart for one metric with value labels. Uses OVERALL_PLOT_COLOR."""
+    import matplotlib.pyplot as plt
+    if yearly_df.empty or metric_col not in yearly_df.columns:
+        return
+    df = _filter_years(yearly_df, first_year, max_year)
+    if df.empty:
+        return
+    ax = ax or plt.gca()
+    ylabel = ylabel or metric_col
+    bars = ax.bar(df["year"], df[metric_col], color=OVERALL_PLOT_COLOR, edgecolor=OVERALL_PLOT_EDGE, alpha=0.85)
+    ax.set_xlabel("Year")
+    ax.set_ylabel(ylabel)
+    ax.set_title(title or metric_col)
+    ax.set_xticks(df["year"].tolist())
+    ax.set_xticklabels(df["year"].tolist())
+    ax.grid(True, alpha=0.3, axis="y")
+    _add_bar_value_labels(ax, bars, df[metric_col], color=OVERALL_PLOT_COLOR)
+
+
 def plot_cumulative_single_bar(
     yearly_df: pd.DataFrame,
     metric_col: str,
@@ -695,37 +753,9 @@ def plot_cumulative_single_bar(
     Uses teal (OVERALL_PLOT_COLOR) to distinguish from gender plots. Year on X-axis, value labels above bars.
     Excludes years > max_year (default PLOT_MAX_YEAR, e.g. 2026). Shows every year on x-axis.
     """
-    import matplotlib.pyplot as plt
-    if yearly_df.empty or metric_col not in yearly_df.columns:
-        return
-    df = yearly_df.copy()
-    if first_year is not None:
-        df = df[df["year"] >= first_year]
-    max_y = max_year if max_year is not None else PLOT_MAX_YEAR
-    df = df[df["year"] <= max_y]
-    if df.empty:
-        return
-    ax = ax or plt.gca()
     title = title or CUMULATIVE_BAR_CONFIG.get(metric_col, (metric_col, ""))[0]
     ylabel = ylabel or CUMULATIVE_BAR_CONFIG.get(metric_col, ("", metric_col))[1] or metric_col
-    bars = ax.bar(df["year"], df[metric_col], color=OVERALL_PLOT_COLOR, edgecolor=OVERALL_PLOT_EDGE, alpha=0.85)
-    ax.set_xlabel("Year")
-    ax.set_ylabel(ylabel)
-    ax.set_title(title)
-    ax.set_xticks(df["year"].tolist())
-    ax.set_xticklabels(df["year"].tolist())
-    ax.grid(True, alpha=0.3, axis="y")
-    for bar, val in zip(bars, df[metric_col]):
-        ax.text(
-            bar.get_x() + bar.get_width() / 2,
-            bar.get_height(),
-            str(int(val)),
-            ha="center",
-            va="bottom",
-            fontsize=9,
-            color=OVERALL_PLOT_COLOR,
-            fontweight="bold",
-        )
+    _plot_single_metric_bar(yearly_df, metric_col, title, ylabel, first_year, max_year, ax)
 
 
 def plot_per_year(
@@ -738,11 +768,7 @@ def plot_per_year(
     import matplotlib.pyplot as plt
     if yearly_df.empty:
         return
-    df = yearly_df.copy()
-    if first_year is not None:
-        df = df[df["year"] >= first_year]
-    max_y = max_year if max_year is not None else PLOT_MAX_YEAR
-    df = df[df["year"] <= max_y]
+    df = _filter_years(yearly_df, first_year, max_year)
     if df.empty:
         return
     ax = ax or plt.gca()
@@ -778,36 +804,8 @@ def plot_per_year_single(
     ax=None,
 ):
     """Plot a single per-year metric (bar chart) with value labels on top of bars. Excludes year > max_year. Shows every year on x-axis."""
-    import matplotlib.pyplot as plt
-    if yearly_df.empty or metric not in yearly_df.columns:
-        return
-    df = yearly_df.copy()
-    if first_year is not None:
-        df = df[df["year"] >= first_year]
-    max_y = max_year if max_year is not None else PLOT_MAX_YEAR
-    df = df[df["year"] <= max_y]
-    if df.empty:
-        return
-    ax = ax or plt.gca()
     title = PER_YEAR_METRICS.get(metric, metric)
-    bars = ax.bar(df["year"], df[metric], color=OVERALL_PLOT_COLOR, edgecolor=OVERALL_PLOT_EDGE, alpha=0.85)
-    ax.set_xlabel("Year")
-    ax.set_ylabel(metric)
-    ax.set_title(title)
-    ax.set_xticks(df["year"].tolist())
-    ax.set_xticklabels(df["year"].tolist())
-    ax.grid(True, alpha=0.3, axis="y")
-    for bar, val in zip(bars, df[metric]):
-        ax.text(
-            bar.get_x() + bar.get_width() / 2,
-            bar.get_height(),
-            str(int(val)),
-            ha="center",
-            va="bottom",
-            fontsize=9,
-            color=OVERALL_PLOT_COLOR,
-            fontweight="bold",
-        )
+    _plot_single_metric_bar(yearly_df, metric, title, metric, first_year, max_year, ax)
 
 
 # Cumulative by gender metric -> display label
@@ -838,11 +836,8 @@ def plot_cumulative_by_gender_bar(
     import numpy as np
     if yearly_by_gender_df.empty:
         return
-    df = yearly_by_gender_df[yearly_by_gender_df["metric"] == metric].copy()
-    if first_year is not None:
-        df = df[df["year"] >= first_year]
-    max_y = max_year if max_year is not None else PLOT_MAX_YEAR
-    df = df[df["year"] <= max_y]
+    df = yearly_by_gender_df[yearly_by_gender_df["metric"] == metric]
+    df = _filter_years(df, first_year, max_year)
     if df.empty:
         return
     ax = ax or plt.gca()
@@ -856,17 +851,7 @@ def plot_cumulative_by_gender_bar(
         off = (i - len(genders) / 2 + 0.5) * w
         color = GENDER_COLORS.get(g, "gray")
         bars = ax.bar(x + off, vals, width=w, label=g, color=color)
-        for bar, val in zip(bars, vals):
-            if val > 0:
-                ax.text(
-                    bar.get_x() + bar.get_width() / 2,
-                    bar.get_height(),
-                    str(int(val)),
-                    ha="center",
-                    va="bottom",
-                    fontsize=8,
-                    color="black",
-                )
+        _add_bar_value_labels(ax, bars, vals, color="black", fontsize=8, fontweight="normal", min_val=0)
     ax.set_xticks(x)
     ax.set_xticklabels(years)
     ax.set_xlabel("Year")
@@ -958,18 +943,10 @@ def plot_top2_active_by_gender(
     import matplotlib.pyplot as plt
     import numpy as np
     if top2_df.empty or "rank" not in top2_df.columns:
-        fig, ax = plt.subplots(figsize=figsize)
-        ax.text(0.5, 0.5, "No data", ha="center", va="center")
-        return fig
-    df = top2_df.copy()
-    if first_year is not None:
-        df = df[df["year"] >= first_year]
-    max_y = max_year if max_year is not None else PLOT_MAX_YEAR
-    df = df[df["year"] <= max_y]
+        return _empty_fig(figsize=figsize)
+    df = _filter_years(top2_df, first_year, max_year)
     if df.empty:
-        fig, ax = plt.subplots(figsize=figsize)
-        ax.text(0.5, 0.5, "No data", ha="center", va="center")
-        return fig
+        return _empty_fig(figsize=figsize)
     years = sorted(df["year"].unique())
     genders = sorted(df["gender"].unique().tolist())
     n_g = len(genders)
@@ -1011,12 +988,8 @@ def plot_cumulative_by_gender(
     import matplotlib.pyplot as plt
     if yearly_by_gender_df.empty or not metrics:
         return
-    df = yearly_by_gender_df.copy()
-    df = df[df["metric"].isin(metrics)]
-    if first_year is not None:
-        df = df[df["year"] >= first_year]
-    max_y = max_year if max_year is not None else PLOT_MAX_YEAR
-    df = df[df["year"] <= max_y]
+    df = yearly_by_gender_df[yearly_by_gender_df["metric"].isin(metrics)]
+    df = _filter_years(df, first_year, max_year)
     if df.empty:
         return
     ax = ax or plt.gca()
@@ -1047,11 +1020,8 @@ def plot_per_year_by_gender(
     import matplotlib.pyplot as plt
     if yearly_by_gender_df.empty:
         return
-    df = yearly_by_gender_df[yearly_by_gender_df["metric"] == metric].copy()
-    if first_year is not None:
-        df = df[df["year"] >= first_year]
-    max_y = max_year if max_year is not None else PLOT_MAX_YEAR
-    df = df[df["year"] <= max_y]
+    df = yearly_by_gender_df[yearly_by_gender_df["metric"] == metric]
+    df = _filter_years(df, first_year, max_year)
     if df.empty:
         return
     ax = ax or plt.gca()
@@ -1169,12 +1139,46 @@ def build_country_yearly_report(
     return out
 
 
+# Config for build_report_from_data: (data_key, plot_func, [(metric, fig_key), ...])
+_REPORT_FIG_SPECS = [
+    (
+        "yearly_metrics_df",
+        plot_cumulative_single_bar,
+        [
+            ("cumulative_accounts_eoy", "fig_cumulative_accounts"),
+            ("cumulative_points_eoy", "fig_cumulative_points"),
+            ("cumulative_exercises_eoy", "fig_cumulative_exercises"),
+            ("cumulative_problems_eoy", "fig_cumulative_problems"),
+        ],
+    ),
+    (
+        "yearly_metrics_df",
+        plot_per_year_single,
+        [
+            ("signups_per_year", "fig_per_year_signups"),
+            ("points_gained_per_year", "fig_per_year_points"),
+            ("exercises_completed_per_year", "fig_per_year_exercises"),
+            ("problems_solved_per_year", "fig_per_year_problems"),
+        ],
+    ),
+    (
+        "yearly_metrics_by_gender_df",
+        plot_cumulative_by_gender_bar,
+        [
+            ("cumulative_accounts_eoy", "fig_cumulative_gender_signups"),
+            ("cumulative_points_eoy", "fig_cumulative_gender_points"),
+            ("cumulative_exercises_eoy", "fig_cumulative_gender_exercises"),
+            ("cumulative_problems_eoy", "fig_cumulative_gender_problems"),
+        ],
+    ),
+]
+
+
 def build_report_from_data(data: dict):
     """
     Build all report figures and extra tables from loaded report data (no scraping).
     Use after load_report_data(). Returns a report dict with same data plus:
-    - fig_per_year_signups, fig_per_year_points, fig_per_year_exercises, fig_per_year_problems
-    - fig_cumulative_gender_signups, fig_cumulative_gender_points, fig_cumulative_gender_exercises, fig_cumulative_gender_problems (bar; male=blue, female=pink)
+    - fig_cumulative_*, fig_per_year_*, fig_cumulative_gender_* (bar; male=blue, female=pink)
     - fig_pies_2025_gender (4 pies: accounts, points, exercises, problems for 2025)
     - fig_top2_active_by_gender
     - most_active_top3_df, most_active_top2_by_gender_df
@@ -1185,61 +1189,32 @@ def build_report_from_data(data: dict):
     yearly_metrics_df = data.get("yearly_metrics_df", pd.DataFrame())
     yearly_metrics_by_gender_df = data.get("yearly_metrics_by_gender_df", pd.DataFrame())
     first_year = data.get("first_year")
+    data_by_key = {
+        "yearly_metrics_df": yearly_metrics_df,
+        "yearly_metrics_by_gender_df": yearly_metrics_by_gender_df,
+    }
 
     out = dict(data)
     if profiles_df.empty and events_df.empty:
         logger.warning("No data to build report from.")
         return out
 
-    # Top-3 and top-2-by-gender: name-only tables for display (detail kept for plot)
     top3_detail = most_active_top_n(events_df, n=3)
     top2_detail = most_active_top_n_by_gender(events_df, profiles_df, n=2)
     out["most_active_top3_df"] = most_active_top3_names_table(top3_detail)
     out["most_active_top2_by_gender_df"] = most_active_top2_by_gender_names_table(top2_detail)
 
     max_year = PLOT_MAX_YEAR
-    # Cumulative (overall): 4 separate bar charts with value labels (reference layout)
-    for metric, key in [
-        ("cumulative_accounts_eoy", "fig_cumulative_accounts"),
-        ("cumulative_points_eoy", "fig_cumulative_points"),
-        ("cumulative_exercises_eoy", "fig_cumulative_exercises"),
-        ("cumulative_problems_eoy", "fig_cumulative_problems"),
-    ]:
-        fig, ax = plt.subplots(figsize=(8, 4))
-        plot_cumulative_single_bar(yearly_metrics_df, metric, first_year=first_year, max_year=max_year, ax=ax)
-        fig.tight_layout()
-        out[key] = fig
+    for data_key, plot_func, metric_keys in _REPORT_FIG_SPECS:
+        df = data_by_key[data_key]
+        for metric, key in metric_keys:
+            fig, ax = plt.subplots(figsize=(8, 4))
+            plot_func(df, metric, first_year=first_year, max_year=max_year, ax=ax)
+            fig.tight_layout()
+            out[key] = fig
 
-    # Per-year: 4 separate plots
-    for metric, key in [
-        ("signups_per_year", "fig_per_year_signups"),
-        ("points_gained_per_year", "fig_per_year_points"),
-        ("exercises_completed_per_year", "fig_per_year_exercises"),
-        ("problems_solved_per_year", "fig_per_year_problems"),
-    ]:
-        fig, ax = plt.subplots(figsize=(8, 4))
-        plot_per_year_single(yearly_metrics_df, metric, first_year=first_year, max_year=max_year, ax=ax)
-        fig.tight_layout()
-        out[key] = fig
-
-    # Cumulative by gender: 4 bar plots
-    for metric, key in [
-        ("cumulative_accounts_eoy", "fig_cumulative_gender_signups"),
-        ("cumulative_points_eoy", "fig_cumulative_gender_points"),
-        ("cumulative_exercises_eoy", "fig_cumulative_gender_exercises"),
-        ("cumulative_problems_eoy", "fig_cumulative_gender_problems"),
-    ]:
-        fig, ax = plt.subplots(figsize=(8, 4))
-        plot_cumulative_by_gender_bar(yearly_metrics_by_gender_df, metric, first_year=first_year, max_year=max_year, ax=ax)
-        fig.tight_layout()
-        out[key] = fig
-
-    # 2025 gender pie charts: % male vs female (accounts, points, exercises, problems)
     out["fig_pies_2025_gender"] = plot_gender_pies_2025(yearly_metrics_by_gender_df, year=2025)
-
-    # Top 2 most active per gender (plot uses detail table with points/rank)
     out["fig_top2_active_by_gender"] = plot_top2_active_by_gender(
         top2_detail, first_year=first_year, max_year=max_year
     )
-
     return out
