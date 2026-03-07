@@ -2,7 +2,7 @@
 
 Tools to scrape [Mathraining](https://www.mathraining.be/) (French IMO training site), build yearly metrics and gender breakdowns, and produce report figures and CSVs.
 
-**[Run in Colab](https://colab.research.google.com/drive/1twcJVzNbkOCum3YyH1y_PImMLpRYaotD#scrollTo=HPS2yD0fLSB-)** — clone repo, install deps, run pipeline (no local setup).
+**[Run in Colab](https://colab.research.google.com/drive/1bLLRkrqKgPSHdwQODMO8ujxLSGI_gYJn#scrollTo=7XaDeizyxyOS)** — clone repo, install deps, run pipeline (no local setup).
 
 ## About Mathraining
 
