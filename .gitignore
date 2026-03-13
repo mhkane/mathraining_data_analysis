@@ -27,3 +27,7 @@ Mathraining_Country_Report_Colab.ipynb
 .vscode/
 *.swp
 *.swo
+
+# One-off / local scripts
+count_unique_from_images.py
+count_unique_names.py

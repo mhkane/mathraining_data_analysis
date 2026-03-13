@@ -36,6 +36,7 @@ PNG_KEYS = [
     "fig_cumulative_gender_problems",
     "fig_pies_2025_gender",
     "fig_top2_active_by_gender",
+    "fig_cumulative_points_per_user_violin",
 ]
 
 

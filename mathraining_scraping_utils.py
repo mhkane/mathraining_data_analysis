@@ -555,6 +555,102 @@ def most_active_by_year_gender(
     return out
 
 
+def cumulative_points_per_user_eoy(
+    profiles_df: pd.DataFrame,
+    events_df: pd.DataFrame,
+    first_year: int | None = None,
+    max_year: int | None = None,
+) -> pd.DataFrame:
+    """
+    Per-user cumulative points at end of each year.
+    For each year Y in [first_year, max_year], considers users with signup_year <= Y and their
+    cumulative points (sum of events with year <= Y). Returns columns: year, Name, cumulative_points_eoy.
+    """
+    if profiles_df.empty:
+        return pd.DataFrame(columns=["year", "Name", "cumulative_points_eoy"])
+    prof = profiles_df.copy()
+    prof["signup_year"] = prof["Sign Up Date"].map(_signup_year)
+    prof = prof.dropna(subset=["signup_year"])
+    prof["signup_year"] = prof["signup_year"].astype(int)
+    if prof.empty:
+        return pd.DataFrame(columns=["year", "Name", "cumulative_points_eoy"])
+    max_y = max_year if max_year is not None else PLOT_MAX_YEAR
+    min_y = first_year if first_year is not None else int(prof["signup_year"].min())
+    years = list(range(min_y, max_y + 1))
+    by_user_year = (
+        events_df.groupby(["Link", "Name", "year"])["points"].sum().reset_index()
+        if not events_df.empty and "points" in events_df.columns
+        else pd.DataFrame(columns=["Link", "Name", "year", "points"])
+    )
+    rows = []
+    for Y in years:
+        users_Y = prof[prof["signup_year"] <= Y][["Link", "Name"]].drop_duplicates()
+        for _, row in users_Y.iterrows():
+            link, name = row["Link"], row["Name"]
+            if by_user_year.empty:
+                cum = 0
+            else:
+                cum = by_user_year[(by_user_year["Link"] == link) & (by_user_year["year"] <= Y)]["points"].sum()
+            rows.append({"year": Y, "Name": name, "cumulative_points_eoy": int(cum)})
+    return pd.DataFrame(rows)
+
+
+# Maximum possible points (platform cap) for violin plot reference line
+VIOLIN_PLOT_MAX_POINTS_REF = 8178
+
+
+def plot_cumulative_points_per_user_violin(
+    profiles_df: pd.DataFrame,
+    events_df: pd.DataFrame,
+    first_year: int | None = None,
+    max_year: int | None = None,
+    ax=None,
+):
+    """
+    Box plot: one box per year (2018..max_year) of the distribution of cumulative points per user at EOY.
+    Draws a horizontal line at the platform maximum (8178) and marks the max score achieved by students per year.
+    Returns the figure (creates one if ax is None).
+    """
+    import matplotlib.pyplot as plt
+    df = cumulative_points_per_user_eoy(profiles_df, events_df, first_year=first_year, max_year=max_year)
+    if df.empty or df["year"].nunique() == 0:
+        fig = _empty_fig(message="No data for cumulative points per user")
+        ax = fig.axes[0]
+        ax.axhline(VIOLIN_PLOT_MAX_POINTS_REF, color="gray", linestyle="--", linewidth=1.5, label=f"Max: {VIOLIN_PLOT_MAX_POINTS_REF}")
+        return fig
+    max_y = max_year if max_year is not None else PLOT_MAX_YEAR
+    years = sorted(df["year"].unique().tolist())
+    data_by_year = [df[df["year"] == y]["cumulative_points_eoy"].values for y in years]
+    fig = None
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(11, 6))
+    bp = ax.boxplot(data_by_year, positions=range(len(years)), patch_artist=True, showmeans=True)
+    for patch in bp["boxes"]:
+        patch.set_facecolor(OVERALL_PLOT_COLOR)
+        patch.set_alpha(0.7)
+    ax.axhline(VIOLIN_PLOT_MAX_POINTS_REF, color="crimson", linestyle="--", linewidth=1.5, label=f"Platform max: {VIOLIN_PLOT_MAX_POINTS_REF}")
+    # Per-year max score achieved by students
+    max_per_year = df.groupby("year")["cumulative_points_eoy"].max()
+    x_max = [years.index(y) for y in max_per_year.index]
+    y_max = max_per_year.values
+    y_upper = max(y_max.max(), VIOLIN_PLOT_MAX_POINTS_REF) * 1.08
+    ax.set_ylim(0, y_upper)
+    ax.scatter(x_max, y_max, color="darkgreen", marker="o", s=44, zorder=5, label="Max score (students)", edgecolors="white", linewidths=1.5)
+    for x, y in zip(x_max, y_max):
+        ax.annotate(str(int(y)), (x, y), xytext=(0, 6), textcoords="offset points", fontsize=7, ha="center", va="bottom", fontweight="bold")
+    ax.set_xticks(range(len(years)))
+    ax.set_xticklabels(years)
+    ax.set_xlabel("Year")
+    ax.set_ylabel("Cumulative points per user (end of year)")
+    ax.set_title("Distribution of cumulative points per user by year (box plot)")
+    ax.legend(loc="upper left", framealpha=0.95)
+    ax.grid(True, alpha=0.3, axis="y")
+    if fig is not None:
+        fig.tight_layout()
+        return fig
+    return plt.gcf()
+
+
 def get_report_data_description() -> str:
     """Return a short description of report data keys and main DataFrame columns (for notebook docs)."""
     return """
@@ -568,6 +664,8 @@ def get_report_data_description() -> str:
 - `most_active_top3_df` – year, Name, points_gained, rank (1–3)
 - `most_active_top2_by_gender_df` – year, gender, Name, points_gained, rank (1–2)
 - `first_year`, `country_count`, `num_pages` – scalars
+
+**Figures:** `fig_cumulative_points_per_user_violin` – box plot of distribution of cumulative points per user at EOY for each year (platform max 8178 line + per-year max score achieved by students).
 
 **Custom plots:** Use `yearly_metrics_df` or `yearly_metrics_by_gender_df` with `msu.plot_cumulative_single_bar()`, `msu.plot_per_year_single()`, `msu.plot_cumulative_by_gender_bar()`.
 """
@@ -1216,5 +1314,8 @@ def build_report_from_data(data: dict):
     out["fig_pies_2025_gender"] = plot_gender_pies_2025(yearly_metrics_by_gender_df, year=2025)
     out["fig_top2_active_by_gender"] = plot_top2_active_by_gender(
         top2_detail, first_year=first_year, max_year=max_year
+    )
+    out["fig_cumulative_points_per_user_violin"] = plot_cumulative_points_per_user_violin(
+        profiles_df, events_df, first_year=first_year, max_year=max_year
     )
     return out
